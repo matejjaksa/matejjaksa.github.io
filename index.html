@@ -64,7 +64,8 @@ button{font:inherit}
 .lab{font-size:13px;color:var(--mut);margin-right:4px}
 label.btn{display:inline-flex;align-items:center;-webkit-user-select:none}
 #note{margin:8px 2px 0;font-size:14px;color:#ffd9a8}
-#vid{position:fixed;width:2px;height:2px;opacity:0;pointer-events:none}
+#vid{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;pointer-events:none}
+canvas{z-index:0}
 @media(max-width:600px){.grid{grid-template-columns:minmax(0,1fr)}.top h1 span{display:none}.chip{padding:0 8px}.chip b{display:none}}
 @media(prefers-reduced-motion:reduce){#dock,#hint{transition:none}}
 </style>
@@ -75,7 +76,7 @@ label.btn{display:inline-flex;align-items:center;-webkit-user-select:none}
 <div id="hint">Drag anywhere to make waves<small>Use several fingers at once</small></div>
 <div id="dock" role="region" aria-label="Simulation controls">
   <div class="top">
-    <h1>Ripple tank<span id="fps"></span></h1>
+    <h1>Ripple tank<span id="fps"></span><span>v3</span></h1>
     <button class="ico" id="fs" aria-label="Full screen" title="Full screen"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
     <button class="ico" id="hide" aria-label="Hide controls" title="Hide controls"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 8l5 5 5-5"/></svg></button>
   </div>
@@ -259,13 +260,32 @@ function setMode(m){BG.mode=m;document.querySelectorAll('.bgb').forEach(b=>b.set
 function upload(src){gl.bindTexture(gl.TEXTURE_2D,bgTex);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,src);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);}
 function stopCam(){if(BG.stream){BG.stream.getTracks().forEach(t=>t.stop());BG.stream=null;}vid.srcObject=null;}
-async function startCam(){
-  say('');
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('Live camera is not available in this browser. Use “Take photo” instead.');return;}
-  try{stopCam();
-    BG.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:BG.facing,width:{ideal:1920},height:{ideal:1080}}});
-    vid.srcObject=BG.stream;await vid.play();BG.mirror=BG.facing==='user';setMode('live');
-  }catch(e){stopCam();say('Camera access was denied. In Safari tap “aA” in the address bar → Website Settings → Camera → Allow, then try again.');}
+let camTimer=0;
+function startCam(){
+  if(!window.isSecureContext){say('Live camera needs an https:// address.');return;}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('This browser does not offer camera access to web pages. Use “Take photo” instead.');return;}
+  say('Starting camera… if Safari asks, tap Allow.');
+  stopCam();
+  /* call getUserMedia synchronously inside the tap so Safari treats it as a user gesture */
+  let p;
+  try{p=navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:BG.facing}}});}
+  catch(e){say('Camera error: '+(e.name||'')+' '+(e.message||e));return;}
+  clearTimeout(camTimer);
+  camTimer=setTimeout(()=>{if(BG.mode!=='live')say('Still waiting for the camera. If no permission prompt appeared: Settings app → Safari → Camera → Ask or Allow, then reload.');},7000);
+  p.then(st=>{
+    BG.stream=st;vid.muted=true;vid.playsInline=true;vid.setAttribute('playsinline','');
+    vid.srcObject=st;BG.mirror=BG.facing==='user';setMode('live');
+    const go=()=>{const r=vid.play();if(r&&r.catch)r.catch(e=>say('Video could not start: '+e.name));};
+    if(vid.readyState>=1)go();else vid.onloadedmetadata=go;
+    say('');clearTimeout(camTimer);
+  }).catch(e=>{
+    clearTimeout(camTimer);stopCam();setMode('pool');
+    const n=e&&e.name;
+    if(n==='NotAllowedError')say('Camera access was denied. Tap “aA” in the address bar → Website Settings → Camera → Allow, then tap Live camera again.');
+    else if(n==='NotFoundError'||n==='OverconstrainedError')say('No matching camera was found ('+n+').');
+    else if(n==='NotReadableError')say('The camera is in use by another app. Close it and try again.');
+    else say('Camera error: '+(n||'')+' '+((e&&e.message)||''));
+  });
 }
 function loadFile(inp,src){const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
   const url=URL.createObjectURL(f),img=new Image();
@@ -303,7 +323,7 @@ function frame(now){
     gl.uniform1f(u.bump,260*simScale);gl.uniform1f(u.caus,m.caus*500*simScale*simScale);gl.uniform1f(u.pat,m.pat);
     m.c.forEach((c,i)=>gl.uniform3fv(u['c'+i],hex(c)));
     let use=BG.mode==='photo'||BG.mode==='live';
-    if(BG.mode==='live'){if(vid.readyState>=2&&vid.videoWidth){upload(vid);BG.w=vid.videoWidth;BG.h=vid.videoHeight;}else use=false;}
+    if(BG.mode==='live'){if(vid.readyState>=2&&vid.videoWidth){try{upload(vid);}catch(e){}BG.w=vid.videoWidth;BG.h=vid.videoHeight;}else use=false;}
     gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,bgTex);gl.uniform1i(u.bg,1);gl.activeTexture(gl.TEXTURE0);
     gl.uniform1f(u.useBg,use?1:0);gl.uniform1f(u.tint,m.n==='Mono'?0:.16);
     {const sa=W/Hh,ia=BG.w/BG.h;let sx=1,sy=1;if(ia>sa)sx=sa/ia;else sy=ia/sa;gl.uniform2f(u.bgS,BG.mirror?-sx:sx,sy);}
