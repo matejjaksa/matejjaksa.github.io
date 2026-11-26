@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Ripple Tank</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: calm, tactile, instrument-like; the water is the whole page.
+   IDEA: a physics-lab ripple tank — a shallow tray of water lit from above.
+   PICTURE: the full-screen GPU wave surface itself, refracting a tiled floor.
+   COLOUR and TYPE: deep water ground, frosted glass controls, one aqua accent; Inter Tight.
+   LAYOUT: edge-to-edge canvas, one floating control dock at the bottom, collapsible. */
+:root{color-scheme:dark;--acc:#5fe3d6;--ink:#eef6f6;--mut:#9fb4b8;--glass:rgba(8,20,26,.62);--line:rgba(255,255,255,.12)}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#03222e;color:var(--ink);
+  font:15px/1.4 "Inter Tight",system-ui,-apple-system,sans-serif;overscroll-behavior:none;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+body{position:fixed;inset:0}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#hint{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);font-weight:600;font-size:clamp(20px,3vw,30px);
+  color:rgba(255,255,255,.78);letter-spacing:.01em;pointer-events:none;transition:opacity .8s;text-shadow:0 2px 18px rgba(0,0,0,.35)}
+#hint small{display:block;text-align:center;font-weight:500;font-size:15px;color:rgba(255,255,255,.55);margin-top:6px}
+#hint.gone{opacity:0}
+#dock{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom));
+  width:min(760px,calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  background:var(--glass);-webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);
+  border:1px solid var(--line);border-radius:20px;padding:12px 14px 14px;box-shadow:0 12px 40px rgba(0,0,0,.35);
+  touch-action:manipulation;transition:transform .35s cubic-bezier(.2,.8,.2,1),opacity .3s}
+#dock.min{transform:translate(-50%,calc(100% + 30px));opacity:0;pointer-events:none}
+.top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.top h1{font-size:16px;font-weight:600;margin:0;flex:1}
+.top h1 span{color:var(--mut);font-weight:500;margin-left:8px;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 18px}
+.ctl label{display:flex;justify-content:space-between;font-size:13px;color:var(--mut)}
+.ctl output{color:var(--ink);font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:40px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--acc) var(--p,50%),rgba(255,255,255,.16) var(--p,50%))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;margin-top:-10px;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:rgba(255,255,255,.16)}
+input[type=range]::-moz-range-progress{height:6px;border-radius:3px;background:var(--acc)}
+input[type=range]::-moz-range-thumb{width:26px;height:26px;border:0;border-radius:50%;background:#fff}
+input[type=range]:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:6px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.maps{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+.chip{display:flex;align-items:center;gap:8px;height:44px;padding:0 12px 0 8px;border-radius:12px;border:1px solid var(--line);
+  background:rgba(255,255,255,.05);color:var(--ink);font:inherit;font-size:14px;cursor:pointer}
+.chip i{width:26px;height:26px;border-radius:8px;flex:none;border:1px solid rgba(255,255,255,.2)}
+.chip[aria-pressed=true]{border-color:var(--acc);background:rgba(95,227,214,.14)}
+button{font:inherit}
+.btn{height:44px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--ink);font-weight:600;cursor:pointer}
+.btn.primary{background:var(--acc);color:#04252a;border-color:transparent}
+.btn[aria-pressed=true]{border-color:var(--acc);color:var(--acc)}
+.btn:focus-visible,.chip:focus-visible,.ico:focus-visible,#open:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.ico{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);display:grid;place-items:center;cursor:pointer}
+#open{position:fixed;right:calc(14px + env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));height:44px;padding:0 16px;border-radius:22px;
+  border:1px solid var(--line);background:var(--glass);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);color:var(--ink);font-weight:600;
+  opacity:0;pointer-events:none;transition:opacity .3s;cursor:pointer}
+#open.show{opacity:1;pointer-events:auto}
+#err{position:fixed;inset:0;display:none;place-items:center;padding:24px;text-align:center;font-size:17px;background:#03222e}
+[hidden]{display:none!important}
+.lab{font-size:13px;color:var(--mut);margin-right:4px}
+label.btn{display:inline-flex;align-items:center;-webkit-user-select:none}
+#note{margin:8px 2px 0;font-size:14px;color:#ffd9a8}
+#vid{position:fixed;width:2px;height:2px;opacity:0;pointer-events:none}
+@media(max-width:600px){.grid{grid-template-columns:minmax(0,1fr)}.top h1 span{display:none}.chip{padding:0 8px}.chip b{display:none}}
+@media(prefers-reduced-motion:reduce){#dock,#hint{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<video id="vid" playsinline muted autoplay></video>
+<div id="hint">Drag anywhere to make waves<small>Use several fingers at once</small></div>
+<div id="dock" role="region" aria-label="Simulation controls">
+  <div class="top">
+    <h1>Ripple tank<span id="fps"></span></h1>
+    <button class="ico" id="fs" aria-label="Full screen" title="Full screen"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
+    <button class="ico" id="hide" aria-label="Hide controls" title="Hide controls"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 8l5 5 5-5"/></svg></button>
+  </div>
+  <div class="grid">
+    <div class="ctl"><label for="visc">Viscosity <output id="viscO"></output></label><input id="visc" type="range" min="0" max="100" value="22"></div>
+    <div class="ctl"><label for="str">Wave strength <output id="strO"></output></label><input id="str" type="range" min="5" max="100" value="55"></div>
+    <div class="ctl"><label for="size">Ripple size <output id="sizeO"></output></label><input id="size" type="range" min="6" max="70" value="22"></div>
+  </div>
+  <div class="row">
+    <div class="maps" id="maps" role="group" aria-label="Color map"></div>
+    <button class="btn" id="rain" aria-pressed="false">Rain</button>
+    <button class="btn primary" id="clear">Clear surface</button>
+  </div>
+  <div class="row" role="group" aria-label="Background">
+    <span class="lab">Background</span>
+    <button class="btn bgb" data-bg="pool" aria-pressed="true">Pool tiles</button>
+    <button class="btn bgb" data-bg="live" aria-pressed="false">Live camera</button>
+    <label class="btn bgb" data-bg="photo" aria-pressed="false" for="snap">Take photo</label>
+    <label class="btn bgb" data-bg="lib" aria-pressed="false" for="pick">Photo library</label>
+    <button class="ico" id="flipcam" aria-label="Switch camera" title="Switch camera" hidden><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a7 7 0 0 1 12.5-3M17 12a7 7 0 0 1-12.5 3M15 2v3.5h-3.5M5 18v-3.5h3.5"/></svg></button>
+    <input id="snap" type="file" accept="image/*" capture="environment" hidden>
+    <input id="pick" type="file" accept="image/*" hidden>
+  </div>
+  <p id="note" hidden></p>
+</div>
+<button id="open">Controls</button>
+<div id="err"></div>
+<script>
+{
+const MAPS=[
+ {n:'Lagoon',c:['#03222e','#0b6e7f','#43c6c9','#effcf8'],pat:.32,caus:1},
+ {n:'Ink',c:['#0b0f2e','#2b3a8f','#c9d2ea','#ffffff'],pat:.12,caus:.8},
+ {n:'Magma',c:['#07030f','#5a1266','#e0503a','#fde29a'],pat:.1,caus:1.2},
+ {n:'Aurora',c:['#040a1c','#0f5e5a','#3fe08a','#f46be0'],pat:.14,caus:1.1},
+ {n:'Mono',c:['#060606','#3a3a3a','#ababab','#ffffff'],pat:.25,caus:.9}];
+const $=id=>document.getElementById(id);
+const cv=$('c'),hint=$('hint'),dock=$('dock');
+const S={visc:22,str:55,size:22,map:0,rain:false};
+try{Object.assign(S,JSON.parse(localStorage.getItem('ripple-tank')||'{}'))}catch(e){}
+const save=()=>{try{localStorage.setItem('ripple-tank',JSON.stringify(S))}catch(e){}};
+const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
+
+/* ---------- WebGL setup ---------- */
+let gl=cv.getContext('webgl2',{alpha:false,antialias:false,preserveDrawingBuffer:false,powerPreference:'high-performance'});
+let isGL2=!!gl,fmt=null;
+function pickFormat(){
+  if(isGL2){gl.getExtension('EXT_color_buffer_float');gl.getExtension('EXT_color_buffer_half_float');
+    fmt={ifmt:gl.RGBA16F,type:gl.HALF_FLOAT,linear:true};}
+  else{const h=gl.getExtension('OES_texture_half_float');if(!h)return false;gl.getExtension('EXT_color_buffer_half_float');
+    fmt={ifmt:gl.RGBA,type:h.HALF_FLOAT_OES,linear:!!gl.getExtension('OES_texture_half_float_linear')};}
+  return true;
+}
+function fail(m){const e=$('err');e.style.display='grid';e.textContent=m;dock.style.display='none';hint.style.display='none';}
+if(!gl){gl=cv.getContext('webgl',{alpha:false,antialias:false})||cv.getContext('experimental-webgl');isGL2=false;}
+if(!gl||!pickFormat()){fail('This browser cannot run the GPU simulation (WebGL with half-float textures is required).');throw 0;}
+
+const VS='attribute vec2 p;varying vec2 uv;void main(){uv=p*.5+.5;gl_Position=vec4(p,0.,1.);}';
+const SIM=`precision highp float;varying vec2 uv;uniform sampler2D s;uniform vec2 tx;uniform float c2,damp,visc;
+float H(vec2 o){return texture2D(s,uv+o*tx).r;}
+void main(){vec4 c=texture2D(s,uv);
+ float e=H(vec2(-1,0))+H(vec2(1,0))+H(vec2(0,-1))+H(vec2(0,1));
+ float d=H(vec2(-1,-1))+H(vec2(1,-1))+H(vec2(-1,1))+H(vec2(1,1));
+ float lap=(4.*e+d-20.*c.r)/6.;
+ float v=(c.g+c2*lap)*damp;
+ float h=(c.r+v+visc*lap)*.9996;
+ gl_FragColor=vec4(h,v,0.,1.);}`;
+const SPLAT=`precision highp float;varying vec2 uv;uniform sampler2D s;uniform vec2 a,b,res;uniform float rad,amp;
+void main(){vec4 c=texture2D(s,uv);vec2 p=uv*res,pa=p-a,ba=b-a;
+ float t=clamp(dot(pa,ba)/max(dot(ba,ba),1e-4),0.,1.);float d=length(pa-ba*t);
+ float q=d*d/(rad*rad);c.g-=amp*(exp(-q)-.5*exp(-q*.5));gl_FragColor=c;}`;
+const DRAW=`precision highp float;varying vec2 uv;uniform sampler2D s;uniform vec2 tx;uniform float aspect,bump,caus,pat,useBg,tint;uniform sampler2D bg;uniform vec2 bgS;
+uniform vec3 c0,c1,c2,c3;
+vec3 cmap(float t){t=clamp(t,0.,1.)*3.;if(t<1.)return mix(c0,c1,t);if(t<2.)return mix(c1,c2,t-1.);return mix(c2,c3,t-2.);}
+float H(vec2 o){return texture2D(s,uv+o*tx).r;}
+void main(){float h=H(vec2(0));float l=H(vec2(-1,0)),r=H(vec2(1,0)),dn=H(vec2(0,-1)),up=H(vec2(0,1));
+ float L2=H(vec2(-2,0))+H(vec2(2,0))+H(vec2(0,-2))+H(vec2(0,2));
+ vec2 g=vec2(r-l,up-dn)*.5;vec3 n=normalize(vec3(-g*bump,1.));
+ vec2 q=uv+n.xy*.04;
+ vec2 tp=q*vec2(aspect,1.)*11.;vec2 f=abs(fract(tp)-.5);
+ float line=smoothstep(.455,.5,max(f.x,f.y));
+ float shade=.42+dot(n.xy,vec2(.55,.8))*.75+clamp(h*.8,-.2,.2);
+ vec3 col;
+ if(useBg>.5){vec3 b=texture2D(bg,(q-.5)*bgS+.5).rgb;
+  col=b*(.86+dot(n.xy,vec2(.55,.8))*.9);col=mix(col,col*cmap(.72)*1.5,tint);}
+ else{col=cmap(shade);col*=1.-line*pat;}
+ float conv=-(L2-4.*h)*.25*caus;
+ col+=cmap(.95)*smoothstep(0.,.9,conv)*.6;
+ vec3 L=normalize(vec3(-.45,.6,.66));float sp=pow(max(reflect(-L,n).z,0.),70.);
+ col+=vec3(sp)*.9;
+ vec2 v=uv-.5;col*=1.-dot(v,v)*.55;
+ gl_FragColor=vec4(col,1.);}`;
+
+function sh(t,src){const o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);
+  if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(o));return o;}
+function prog(fs){const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,VS));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));
+  gl.bindAttribLocation(p,0,'p');gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));
+  const u={};const n=gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS);
+  for(let i=0;i<n;i++){const nm=gl.getActiveUniform(p,i).name;u[nm]=gl.getUniformLocation(p,nm);}return{p,u};}
+let P;
+try{P={sim:prog(SIM),splat:prog(SPLAT),draw:prog(DRAW)};}catch(e){fail('Shader error: '+e.message);throw e;}
+const vb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,vb);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+
+/* ---------- targets ---------- */
+let T=[],cur=0,simW=0,simH=0,simScale=.5,W=0,Hh=0;
+function target(w,h){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+  const flt=fmt.linear?gl.LINEAR:gl.NEAREST;
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,flt);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,flt);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,fmt.ifmt,w,h,0,gl.RGBA,fmt.type,null);
+  const f=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+  const ok=gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE;
+  gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);return{t,f,ok};}
+function resize(){
+  const cw=innerWidth,ch=innerHeight,dpr=Math.min(devicePixelRatio||1,2);
+  W=Math.round(cw*dpr);Hh=Math.round(ch*dpr);cv.width=W;cv.height=Hh;
+  simScale=Math.min(.5,680/Math.max(cw,ch));
+  const nw=Math.max(64,Math.round(cw*simScale)),nh=Math.max(64,Math.round(ch*simScale));
+  if(nw===simW&&nh===simH)return;simW=nw;simH=nh;
+  T.forEach(x=>{gl.deleteTexture(x.t);gl.deleteFramebuffer(x.f)});
+  T=[target(simW,simH),target(simW,simH)];cur=0;
+  if(!T[0].ok){fail('This GPU cannot render to half-float textures, so the simulation cannot run here.');}
+}
+function clearSurface(){T.forEach(x=>{gl.bindFramebuffer(gl.FRAMEBUFFER,x.f);gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT)});}
+function pass(pr){const src=T[cur],dst=T[1-cur];gl.bindFramebuffer(gl.FRAMEBUFFER,dst.f);gl.viewport(0,0,simW,simH);
+  gl.useProgram(pr.p);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,src.t);gl.uniform1i(pr.u.s,0);return pr.u;}
+function flip(){gl.drawArrays(gl.TRIANGLES,0,3);cur=1-cur;}
+
+/* ---------- input ---------- */
+const ptrs=new Map(),queue=[];
+function toSim(e){return[e.clientX*simScale,(innerHeight-e.clientY)*simScale];}
+function addSeg(a,b,amp){if(queue.length<64)queue.push([a,b,amp]);}
+let touched=false;
+function firstTouch(){if(!touched){touched=true;hint.classList.add('gone');}}
+cv.addEventListener('pointerdown',e=>{e.preventDefault();firstTouch();try{cv.setPointerCapture(e.pointerId)}catch(_){}
+  const p=toSim(e);ptrs.set(e.pointerId,p);addSeg(p,p,1.6);},{passive:false});
+cv.addEventListener('pointermove',e=>{const last=ptrs.get(e.pointerId);if(!last)return;e.preventDefault();
+  const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];let a=last;
+  for(const ev of (evs.length?evs:[e])){const b=toSim(ev);const len=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    if(len<.35)continue;const r=S.size*simScale;addSeg(a,b,Math.min(1.3,.3+len/r*.7));a=b;}
+  ptrs.set(e.pointerId,a);},{passive:false});
+const up=e=>ptrs.delete(e.pointerId);
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);cv.addEventListener('lostpointercapture',up);
+document.addEventListener('gesturestart',e=>e.preventDefault());
+document.addEventListener('touchmove',e=>{if(e.target===cv)e.preventDefault()},{passive:false});
+
+/* ---------- UI ---------- */
+const fmtV={visc:v=>v,str:v=>v,size:v=>v+' px'};
+['visc','str','size'].forEach(k=>{const el=$(k),o=$(k+'O');el.value=S[k];
+  const upd=()=>{S[k]=+el.value;o.textContent=fmtV[k](S[k]);
+    el.style.setProperty('--p',((el.value-el.min)/(el.max-el.min)*100)+'%');save();};
+  el.addEventListener('input',upd);upd();});
+$('maps').innerHTML=MAPS.map((m,i)=>`<button class="chip" data-i="${i}" aria-pressed="${i===S.map}"><i style="background:linear-gradient(135deg,${m.c.join(',')})"></i><b>${m.n}</b></button>`).join('');
+$('maps').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;S.map=+b.dataset.i;save();
+  document.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c===b));document.body.style.background=MAPS[S.map].c[0];});
+document.body.style.background=MAPS[S.map]?MAPS[S.map].c[0]:'#03222e';if(!MAPS[S.map])S.map=0;
+const rainB=$('rain');rainB.setAttribute('aria-pressed',S.rain);
+rainB.addEventListener('click',()=>{S.rain=!S.rain;rainB.setAttribute('aria-pressed',S.rain);save();});
+$('clear').addEventListener('click',clearSurface);
+$('hide').addEventListener('click',()=>{dock.classList.add('min');$('open').classList.add('show');});
+$('open').addEventListener('click',()=>{dock.classList.remove('min');$('open').classList.remove('show');});
+const fsB=$('fs'),root=document.documentElement;
+const reqFS=root.requestFullscreen||root.webkitRequestFullscreen;
+if(!reqFS)fsB.style.display='none';
+fsB.addEventListener('click',()=>{try{const inFS=document.fullscreenElement||document.webkitFullscreenElement;
+  if(inFS)(document.exitFullscreen||document.webkitExitFullscreen).call(document);
+  else{const r=reqFS.call(root);if(r&&r.catch)r.catch(()=>{fsB.style.display='none'});}}catch(_){fsB.style.display='none'}});
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(resize,120)});
+
+/* ---------- background ---------- */
+const bgTex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,bgTex);
+[[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]].forEach(([k,v])=>gl.texParameteri(gl.TEXTURE_2D,k,v));
+gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
+const BG={mode:'pool',w:1,h:1,mirror:false,stream:null,facing:'environment'};
+const vid=$('vid'),note=$('note');
+function say(m){note.hidden=!m;note.textContent=m||'';}
+function setMode(m){BG.mode=m;document.querySelectorAll('.bgb').forEach(b=>b.setAttribute('aria-pressed',b.dataset.bg===(m==='photo'?BG.src:m)));
+  $('flipcam').hidden=m!=='live';}
+function upload(src){gl.bindTexture(gl.TEXTURE_2D,bgTex);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,src);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);}
+function stopCam(){if(BG.stream){BG.stream.getTracks().forEach(t=>t.stop());BG.stream=null;}vid.srcObject=null;}
+async function startCam(){
+  say('');
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('Live camera is not available in this browser. Use “Take photo” instead.');return;}
+  try{stopCam();
+    BG.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:BG.facing,width:{ideal:1920},height:{ideal:1080}}});
+    vid.srcObject=BG.stream;await vid.play();BG.mirror=BG.facing==='user';setMode('live');
+  }catch(e){stopCam();say('Camera access was denied. In Safari tap “aA” in the address bar → Website Settings → Camera → Allow, then try again.');}
+}
+function loadFile(inp,src){const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
+  const url=URL.createObjectURL(f),img=new Image();
+  img.onload=()=>{const k=Math.min(1,2048/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=document.createElement('canvas');c.width=Math.round(img.naturalWidth*k);c.height=Math.round(img.naturalHeight*k);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);
+    stopCam();upload(c);BG.w=c.width;BG.h=c.height;BG.mirror=false;BG.src=src;setMode('photo');say('');};
+  img.onerror=()=>{URL.revokeObjectURL(url);say('That image could not be read. Try a JPEG or PNG.');};
+  img.src=url;}
+$('snap').addEventListener('change',e=>loadFile(e.target,'photo'));
+$('pick').addEventListener('change',e=>loadFile(e.target,'lib'));
+document.querySelector('[data-bg=pool]').addEventListener('click',()=>{stopCam();setMode('pool');say('');});
+document.querySelector('[data-bg=live]').addEventListener('click',startCam);
+$('flipcam').addEventListener('click',()=>{BG.facing=BG.facing==='user'?'environment':'user';startCam();});
+
+/* ---------- loop ---------- */
+resize();
+const STEP=1/120;let acc=0,lastT=performance.now(),rainT=0,fc=0,ft=0;
+function frame(now){
+  let dt=Math.min(.1,(now-lastT)/1000);lastT=now;acc+=dt;
+  if(T[0]&&T[0].ok){
+    const vn=S.visc/100,sn=S.str/100,r=Math.max(1.5,S.size*simScale);
+    if(S.rain){rainT+=dt;while(rainT>.09){rainT-=.09;const p=[Math.random()*simW,Math.random()*simH];addSeg(p,p,.5+Math.random()*.9);}}
+    if(queue.length){const pr=P.splat;
+      for(const [a,b,k] of queue){const u=pass(pr);gl.uniform2f(u.a,a[0],a[1]);gl.uniform2f(u.b,b[0],b[1]);
+        gl.uniform2f(u.res,simW,simH);gl.uniform1f(u.rad,r);gl.uniform1f(u.amp,sn*.03*k);flip();}
+      queue.length=0;}
+    let n=0;
+    while(acc>=STEP&&n<4){const u=pass(P.sim);gl.uniform2f(u.tx,1/simW,1/simH);gl.uniform1f(u.c2,.5);
+      gl.uniform1f(u.damp,1-(.0012+vn*vn*.05));gl.uniform1f(u.visc,vn*.05);flip();acc-=STEP;n++;}
+    if(n===4)acc=0;
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,W,Hh);
+    const d=P.draw,u=d.u,m=MAPS[S.map];gl.useProgram(d.p);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,T[cur].t);
+    gl.uniform1i(u.s,0);gl.uniform2f(u.tx,1/simW,1/simH);gl.uniform1f(u.aspect,simW/simH);
+    gl.uniform1f(u.bump,260*simScale);gl.uniform1f(u.caus,m.caus*500*simScale*simScale);gl.uniform1f(u.pat,m.pat);
+    m.c.forEach((c,i)=>gl.uniform3fv(u['c'+i],hex(c)));
+    let use=BG.mode==='photo'||BG.mode==='live';
+    if(BG.mode==='live'){if(vid.readyState>=2&&vid.videoWidth){upload(vid);BG.w=vid.videoWidth;BG.h=vid.videoHeight;}else use=false;}
+    gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,bgTex);gl.uniform1i(u.bg,1);gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1f(u.useBg,use?1:0);gl.uniform1f(u.tint,m.n==='Mono'?0:.16);
+    {const sa=W/Hh,ia=BG.w/BG.h;let sx=1,sy=1;if(ia>sa)sx=sa/ia;else sy=ia/sa;gl.uniform2f(u.bgS,BG.mirror?-sx:sx,sy);}
+    gl.drawArrays(gl.TRIANGLES,0,3);
+  }
+  fc++;ft+=dt;if(ft>1){$('fps').textContent=Math.round(fc/ft)+' fps';fc=0;ft=0;}
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+cv.addEventListener('webglcontextlost',e=>{e.preventDefault();fail('The GPU context was lost. Reload the page to continue.');});
+}
+</script>
+</body>
+</html>
